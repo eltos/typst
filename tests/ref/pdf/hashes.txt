@@ -784,6 +784,7 @@ f4050ba75f826edc48765b6ad8090539 issue-622-hide-meta-outline
 4f0ede6de384aefcfe76e3f39546e89f issue-6304-block-skip-label
 25661c8cec6a6865ffe1b6a1afc9bfc2 issue-6399-grid-cell-colspan-set-rule
 a784083fbc5d91e4a07b85f5e29b154d issue-6399-grid-cell-rowspan-set-rule
+32ac962a8c01fae6a87573375551981a issue-6443
 f420fcaa78fa27566a8b2fde93343cc8 issue-6539-cjk-latin-spacing-at-manual-linebreak
 79b8c4587f88dafcbe34cabaffbedcb6 issue-6597-gradient-angle-negative-size
 2f34597f58f2bff11faf51542eb3a701 issue-6666-auto-hlines-around-footer

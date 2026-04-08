@@ -122,6 +122,19 @@
 
 #align(right, rect(width: 1cm, fill: gradient.linear(red, blue))[Right])
 
+--- issue-6443 paged ---
+#set page(width: auto)
+#rect(
+  height: 15pt,
+  width: 20pt,
+  stroke: (
+    left: (thickness: 4pt, dash: "dashed"),
+    bottom: (thickness: 4pt, dash: "dashed"),
+    right: (thickness: 4pt),
+  ),
+  radius: 4pt,
+)
+
 --- rect-size-beyond-default paged ---
 // Test that setting a rectangle's height beyond its default sizes it correctly.
 #rect()
