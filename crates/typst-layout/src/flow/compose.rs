@@ -47,6 +47,7 @@ pub fn compose(
         page_insertions: Insertions::default(),
         column_insertions: Insertions::default(),
         column_balancing_height: None,
+        column_separator_height: Abs::zero(),
         work,
         footnote_spill: None,
         footnote_queue: vec![],
@@ -70,7 +71,8 @@ pub struct Composer<'a, 'b, 'x, 'y> {
     page_base: Size,
     page_insertions: Insertions<'a, 'b>,
     column_insertions: Insertions<'a, 'b>,
-    pub(crate) column_balancing_height: Option<Abs>,
+    column_balancing_height: Option<Abs>,
+    column_separator_height: Abs,
     // These are here because they have to survive relayout (we could lose the
     // footnotes otherwise). For floats, we revisit them anyway, so it's okay to
     // use `work.floats` directly. This is not super clean; probably there's a
@@ -223,6 +225,14 @@ impl<'a, 'b> Composer<'a, 'b, '_, '_> {
             }
         };
         drop(checkpoint);
+
+        self.column_separator_height = if self.column_insertions.bottom_floats.is_empty()
+        {
+            used_height
+        } else {
+            self.column_balancing_height
+                .unwrap_or(inner.height() + self.column_insertions.float_height())
+        };
 
         self.work.footnotes.extend(self.footnote_queue.drain(..));
         if let Some(spill) = self.footnote_spill.take() {
