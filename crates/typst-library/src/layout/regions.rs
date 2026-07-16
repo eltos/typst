@@ -94,6 +94,12 @@ impl Regions<'_> {
         }
     }
 
+    /// Return regions shrunken by the given height
+    pub fn shrunken_by(mut self, height: Abs) -> Self {
+        self.size.y -= height;
+        self
+    }
+
     /// Whether the first region is full and a region break is called for.
     pub fn is_full(&self) -> bool {
         Abs::zero().fits(self.size.y) && self.may_progress()

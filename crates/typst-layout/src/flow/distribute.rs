@@ -168,12 +168,6 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
         }
     }
 
-    /// Mark the amount of height used and reduce the region height accordingly.
-    fn use_height(&mut self, amount: Abs) {
-        self.regions.size.y -= amount;
-        self.used.y += amount;
-    }
-
     /// Processes relative spacing.
     fn rel(&mut self, amount: Rel<Abs>, weakness: u8) {
         let amount = amount.relative_to(self.regions.base().y);
@@ -181,7 +175,7 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
             return;
         }
 
-        self.use_height(amount);
+        self.used.y += amount;
         self.items.push(Item::Abs(amount, weakness));
     }
 
@@ -210,8 +204,8 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
                     if weakness <= prev_weakness
                         && (weakness < prev_weakness || amount > prev_amount)
                     {
+                        self.used.y += amount - prev_amount;
                         *item = Item::Abs(amount, weakness);
-                        self.use_height(amount - prev_amount);
                     }
                     return false;
                 }
@@ -262,7 +256,7 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
         for (i, item) in self.items.iter().enumerate().rev() {
             match *item {
                 Item::Abs(amount, 1..) => {
-                    self.use_height(-amount);
+                    self.used.y -= amount;
                     self.items.remove(i);
                     break;
                 }
@@ -290,7 +284,7 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
 
     /// Whether the amount fits into the remaining region, taking into account column balancing limits.
     pub fn fits(&self, amount: Abs) -> bool {
-        self.regions.size.y.fits(amount)
+        self.regions.size.y.fits(self.used.y + amount)
             && self
                 .target
                 // Add elements as long as the balancing target is not reached. By not including
@@ -302,7 +296,9 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
     fn line(&mut self, line: &'b LineChild) -> FlowResult<()> {
         // If the line doesn't fit and a followup region may improve things,
         // finish the region.
-        if !self.fits(line.frame.height()) && self.regions.may_progress() {
+        if !self.fits(line.frame.height())
+            && self.regions.shrunken_by(self.used.y).may_progress()
+        {
             return Err(Stop::Finish(false));
         }
 
@@ -333,8 +329,13 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
 
         // Handle fractionally sized blocks.
         if let Some(fr) = single.fr {
-            self.composer
-                .footnotes(&self.regions, &frame, Abs::zero(), false, true)?;
+            self.composer.footnotes(
+                &self.regions.shrunken_by(self.used.y),
+                &frame,
+                Abs::zero(),
+                false,
+                true,
+            )?;
             self.flush_tags();
             self.items.push(Item::Fr(fr, 0, Some(single)));
             return Ok(());
@@ -342,7 +343,9 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
 
         // If the block doesn't fit and a followup region may improve things,
         // finish the region.
-        if !self.fits(frame.height()) && self.regions.may_progress() {
+        if !self.fits(frame.height())
+            && self.regions.shrunken_by(self.used.y).may_progress()
+        {
             return Err(Stop::Finish(false));
         }
 
@@ -351,7 +354,7 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
 
     /// Processes a breakable block.
     fn multi(&mut self, multi: &'b MultiChild<'a>) -> FlowResult<()> {
-        let mut pod = self.regions;
+        let mut pod = self.regions.shrunken_by(self.used.y);
 
         // For column balancing, reduce the region size for layout
         if let Some(lim) = self.target {
@@ -369,7 +372,7 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
         let (frame, spill) = multi.layout(self.composer.engine, pod)?;
         if frame.is_empty()
             && spill.as_ref().is_some_and(|s| s.exist_non_empty_frame)
-            && self.regions.may_progress()
+            && self.regions.shrunken_by(self.used.y).may_progress()
         {
             // If the first frame is empty, but there are non-empty frames in
             // the spill, the whole child should be put in the next region to
@@ -392,7 +395,7 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
 
     /// Processes spillover from a breakable block.
     fn multi_spill(&mut self, spill: MultiSpill<'a, 'b>) -> FlowResult<()> {
-        let mut pod = self.regions;
+        let mut pod = self.regions.shrunken_by(self.used.y);
 
         // For column balancing, reduce the region size for layout.
         if let Some(lim) = self.target {
@@ -448,7 +451,9 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
             // blocks at the top of a block - but not necessarily of the page -
             // can still be migrated.
             if self.sticky.is_none()
-                && *self.stickable.get_or_insert_with(|| self.regions.may_progress())
+                && *self.stickable.get_or_insert_with(|| {
+                    self.regions.shrunken_by(self.used.y).may_progress()
+                })
             {
                 self.sticky = Some(self.snapshot());
             }
@@ -462,7 +467,7 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
 
         // Handle footnotes.
         self.composer.footnotes(
-            &self.regions,
+            &self.regions.shrunken_by(self.used.y),
             &frame,
             frame.height(),
             breakable,
@@ -470,7 +475,7 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
         )?;
 
         // Push an item for the frame.
-        self.use_height(frame.height());
+        self.used.y += frame.height();
         self.used.x.set_max(frame.width());
         self.flush_tags();
         self.items.push(Item::Frame(frame, align));
@@ -485,19 +490,17 @@ impl<'a, 'b> Distributor<'a, 'b, '_, '_, '_> {
             // distribution shrinks. We make the spacing occupied by weak
             // spacing temporarily available again because it can collapse if it
             // ends up at a break due to the float.
-            let weak_spacing = self.weak_spacing();
-            self.use_height(-weak_spacing);
+            let regions = self.regions.shrunken_by(self.used.y - self.weak_spacing());
             self.composer.float(
                 placed,
-                &self.regions,
+                &regions,
                 self.items.iter().any(|item| matches!(item, Item::Frame(..))),
                 true,
             )?;
-            self.use_height(weak_spacing);
         } else {
             let frame = placed.layout(self.composer.engine, self.regions.base())?;
-            self.composer
-                .footnotes(&self.regions, &frame, Abs::zero(), true, true)?;
+            let regions = self.regions.shrunken_by(self.used.y);
+            self.composer.footnotes(&regions, &frame, Abs::zero(), true, true)?;
             self.flush_tags();
             self.items.push(Item::Placed(frame, placed));
         }
